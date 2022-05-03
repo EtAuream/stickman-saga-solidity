@@ -302,7 +302,6 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   function depositNFTs(uint8[] calldata tokenIds) public reentrancyGuard checkNFTOwner(tokenIds, msg.sender) {
     require(!locked, "Deposit: All deposits are currently locked.");
     require(tokenIds.length + inventory[msg.sender].depositedNFTs.length >= 2, "Deposit: you must deposit at least 2 NFTs");
-    // require(tokenIds.length + inventory[msg.sender].depositedNFTs.length <= 5, "Deposit: you can only stake 5 NFTs");
     inventory[msg.sender].rewardAmount = calculateRewards(msg.sender);
     inventory[msg.sender].lastClaimTime = block.timestamp; //set claim time
 
@@ -318,9 +317,6 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     require(!inventory[msg.sender].locked, "Withdraw: Withdraw is locked for this token ID.");
     require(msg.value >= withdrawlFee, "Withdrawl Fee: You don't have enough for the fee.");
     require(inventory[msg.sender].depositedNFTs.length-tokenIds.length != 1, "Withdrawl: must keep at least two NFTs staked.");
-    // if(inventory[msg.sender].initialDepositDate + 30 days < block.timestamp){
-    //   IERC20(feeCoin).safeTransferFrom(msg.sender, address(this), withdrawlFee);
-    // }
     for (uint256 index = 0; index < tokenIds.length; index++) {
       transferNFTs(tokenIds[index], msg.sender);
     }
