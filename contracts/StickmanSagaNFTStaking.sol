@@ -285,11 +285,14 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   using SafeMath for uint256;
 
   address public nftContract;
+<<<<<<< HEAD
   address public feeCoin;
 <<<<<<< HEAD:contracts/NFTStake.sol
 <<<<<<< HEAD
   address public treasury; 
 =======
+=======
+>>>>>>> 0721aba... revise tests and remove stable coin
   address public stixToken;
 >>>>>>> 6b1c894... add hardhat and contracts along with tests:contracts/StickmanSagaNFTStaking.sol
 
@@ -377,6 +380,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   constructor(
     address _nftContract, // Stickman Saga NFT contract
 <<<<<<< HEAD
+<<<<<<< HEAD
     address _feeCoin,
 <<<<<<< HEAD:contracts/NFTStake.sol
 =======
@@ -427,15 +431,20 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     address _stixToken
 =======
     address _feeCoin,  // Stable Coin or can even be ETH -> would need to 
+=======
+>>>>>>> 0721aba... revise tests and remove stable coin
     address _stixToken // STIX token contract
 >>>>>>> 499729d... finish tests
   ) {
     nftContract = _nftContract;
-    feeCoin = _feeCoin;
     claimLength = 1 days;
     stixToken = _stixToken;
+<<<<<<< HEAD
     withdrawlFee = 20 * 10**IERC20(feeCoin).decimals();
 >>>>>>> 6b1c894... add hardhat and contracts along with tests:contracts/StickmanSagaNFTStaking.sol
+=======
+    withdrawlFee = 20 * 10**18;
+>>>>>>> 0721aba... revise tests and remove stable coin
   }
 
   function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
@@ -456,7 +465,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
 >>>>>>> 499729d... finish tests
     require(!locked, "Deposit: All deposits are currently locked.");
     require(tokenIds.length + inventory[msg.sender].depositedNFTs.length >= 2, "Deposit: you must deposit at least 2 NFTs");
-    require(tokenIds.length + inventory[msg.sender].depositedNFTs.length <= 5, "Deposit: you can only stake 5 NFTs");
+    // require(tokenIds.length + inventory[msg.sender].depositedNFTs.length <= 5, "Deposit: you can only stake 5 NFTs");
     inventory[msg.sender].rewardAmount = calculateRewards(msg.sender);
     inventory[msg.sender].lastClaimTime = block.timestamp; //set claim time
 
@@ -467,14 +476,14 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     }
   }
 
-  function withdraw(uint8[] calldata tokenIds) public reentrancyGuard {
+  function withdraw(uint8[] calldata tokenIds) public payable reentrancyGuard {
     require(!locked, "Withdraw: All withdrawls are currently locked.");
     require(!inventory[msg.sender].locked, "Withdraw: Withdraw is locked for this token ID.");
-    require(IERC20(feeCoin).balanceOf(msg.sender) >= withdrawlFee, "Withdrawl Fee: You don't have enough for the fee.");
+    require(msg.value >= withdrawlFee, "Withdrawl Fee: You don't have enough for the fee.");
     require(inventory[msg.sender].depositedNFTs.length-tokenIds.length != 1, "Withdrawl: must keep at least two NFTs staked.");
-    if(inventory[msg.sender].initialDepositDate + 30 days < block.timestamp){
-      IERC20(feeCoin).safeTransferFrom(msg.sender, address(this), withdrawlFee);
-    }
+    // if(inventory[msg.sender].initialDepositDate + 30 days < block.timestamp){
+    //   IERC20(feeCoin).safeTransferFrom(msg.sender, address(this), withdrawlFee);
+    // }
     for (uint256 index = 0; index < tokenIds.length; index++) {
       transferNFTs(tokenIds[index], msg.sender);
     }
@@ -586,6 +595,11 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
 >>>>>>> 1431461... copy over files
   function setClaimlength(uint256 _claimLength) public onlyManager() {
     claimLength = _claimLength;
+  }
+
+  function pullWithdrawlFees() external onlyManager() {
+      uint256 total = address(this).balance;
+      payable(_owner).transfer(total);
   }  
 
 <<<<<<< HEAD
@@ -617,9 +631,9 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
 >>>>>>> 1431461... copy over files
   }
 
-  function setFeeCoint(address feeCoinAddress) public onlyManager(){
-    feeCoin = feeCoinAddress;
-  }
+  // function setFeeCoin(address feeCoinAddress) public onlyManager(){
+  //   feeCoin = feeCoinAddress;
+  // }
 
   function managerSafeNFTWithdrawal(uint256[] calldata tokenIDs, address recipient) public onlyManager() {
     for (uint256 index = 0; index < tokenIDs.length; index++) {
@@ -649,6 +663,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     locked = !locked;
   }
 
+<<<<<<< HEAD
 <<<<<<< HEAD:contracts/NFTStake.sol
 <<<<<<< HEAD
   enum CONTRACTS { nftContract, feeCoin, treasury }
@@ -711,6 +726,12 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
         z++;
       }
 =======
+=======
+  enum CONTRACTS { nftContract, stixToken }
+  function setContract(CONTRACTS _contracts, address _address) public onlyManager() {
+    if (_contracts == CONTRACTS.nftContract) { // 0
+      nftContract = _address;
+>>>>>>> 0721aba... revise tests and remove stable coin
     }else if (_contracts == CONTRACTS.stixToken) { // 2
       stixToken = _address;
     } 

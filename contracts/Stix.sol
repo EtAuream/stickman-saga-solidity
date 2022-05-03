@@ -14,4 +14,9 @@ contract Stix is ERC20Capped, Ownable {
         ERC20._mint(msg.sender, mintedAmount);
     }
 
+    function distributeTokens(address stakingContract, address treasury) public onlyOwner {
+        transfer(stakingContract, mintedAmount.div(2));
+        transfer(treasury, mintedAmount.div(2));
+    }
+
 }
