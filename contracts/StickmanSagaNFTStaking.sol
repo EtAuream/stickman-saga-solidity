@@ -187,7 +187,7 @@ library SafeERC20 {
 }
 
 interface ITreasury {
-    function mintRewards( address _recipient, uint _amount ) external;
+    function transferRewards( address _recipient, uint _amount ) external;
 }
 
 interface IOHMERC20 {
@@ -195,11 +195,12 @@ interface IOHMERC20 {
 }
 
 
-interface ERC721 {
+interface IStickmanERC721 {
     event Transfer(address indexed _from, address indexed _to, uint256 indexed _tokenId);
     event Approval(address indexed _owner, address indexed _approved, uint256 indexed _tokenId);
     event ApprovalForAll(address indexed _owner, address indexed _operator, bool _approved);
     function balanceOf(address _owner) external view returns (uint256);
+    function totalSupply() external view returns (uint256);
     function ownerOf(uint256 _tokenId) external view returns (address);
     function safeTransferFrom(address _from, address _to, uint256 _tokenId) external payable;
     function transferFrom(address _from, address _to, uint256 _tokenId) external payable;
@@ -208,22 +209,6 @@ interface ERC721 {
     function getApproved(uint256 _tokenId) external view returns (address);
     function isApprovedForAll(address _owner, address _operator) external view returns (bool);
 }
-
-// contract DOMERC721 {
-//   mapping(uint => NFTType) public NFTTypes;
-//   uint public nftTypesSize;
-
-//   mapping(uint256 => uint) public TokenTypes;
-  
-//   struct NFTType {
-//     uint cost; // Cost for each NFT (in USD)
-//     string name; // Name for each NFT
-//     uint256 rewardAmount; // Reward Amount for each NFT
-//     uint256 stakingCost; // Cost to stake each NFT
-//     string baseExtension; // Path for nft attributes/image
-//     bool available; // Still for sale
-//   }
-// }
 
 // OpenZeppelin Contracts v4.4.1 (token/ERC721/IERC721Receiver.sol)
 
@@ -250,33 +235,31 @@ interface IERC721Receiver {
     ) external returns (bytes4);
 }
 
-contract StickmanSagaNFTDepository is Ownable, IERC721Receiver {
+contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   using SafeERC20 for IERC20;
   using SafeMath for uint256;
 
   address public nftContract;
   address public feeCoin;
-  address public treasury; 
+  address public stixToken;
 
   bool public locked; // Locks all deposits, claims, and withdrawls
-  uint256 public withdrawlFee = 20; //fee in USDC for withdrawing staked NFT
+  uint256 public withdrawlFee; //fee in USDC for withdrawing staked NFT
   uint256 public claimLength; // Length of time between claims
   uint256 public claimReward; // Reward per Stickman staked
-
-  // uint public maxEpochs; // How many times the rewards will accumulate til monthly fee will need to be paid
-
-  // mapping(address => uint256[]) private deposits; // Each address mapped to all the deposited token IDs
  
-  mapping(uint256 => vestedInfo) public inventory; // Each token ID mapped to the info about each one
+  mapping(address => vestedInfo) public inventory; // Each token ID mapped to the info about each one
 
   struct vestedInfo {
-    address owner; // Address of the owner
-    uint256 claimLength; // Current length of time between claims
+    uint256 lastClaimTime; // Current length of time between claims
     bool locked; // Lock NFT to prevent claiming or withdraw
-    uint numNFTS; //track number of NFTs staked
+    uint256[] depositedNFTs; //keep track of all the NFTs deposited
+    uint256 rewardAmount; //when number of NFTs changes, update this number
+    uint256 initialDepositDate;
   }
   
   /** reentrancy */
+  //TODO: add this to any public functions
   uint256 private guard = 1;
   modifier reentrancyGuard() {
       require (guard == 1, "reentrancy failure.");
@@ -286,9 +269,9 @@ contract StickmanSagaNFTDepository is Ownable, IERC721Receiver {
   }
 
   // modifiers functions
-  modifier checkNFTOwner(uint256[] tokenIds, address owner){
+  modifier checkNFTOwner(uint256[] calldata tokenIds, address owner){
     for (uint256 index = 0; index < tokenIds.length; index++) {
-      require(owner == ERC721(nftContract).ownerOf(tokenIds[index]));
+      require(owner == IStickmanERC721(nftContract).ownerOf(tokenIds[index]));
     }
     _;
   }
@@ -296,56 +279,55 @@ contract StickmanSagaNFTDepository is Ownable, IERC721Receiver {
   constructor(
     address _nftContract, // Stickman Saga NFT contract
     address _feeCoin,
-    address _treasury
+    address _stixToken
   ) {
     nftContract = _nftContract;
     feeCoin = _feeCoin;
-    treasury = _treasury;
     claimLength = 1 days;
+    stixToken = _stixToken;
+    withdrawlFee = 20 * 10**IERC20(feeCoin).decimals();
   }
 
   function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
       return this.onERC721Received.selector;
   }
 
-  //TODO: create a depositAll, change to pull all the NFTs from a wallet to deposit
-  function depositNFTs(uint256[] tokenIds) public reentrancyGuard  checkNFTOwner(tokenIds, msg.sender) {
+  //TODO: only allow 5 NFTs to be staked at one time
+  function depositNFTs(uint256[] calldata tokenIds) public reentrancyGuard checkNFTOwner(tokenIds, msg.sender) {
     require(!locked, "Deposit: All deposits are currently locked.");
-    require(ERC721(nftContract).balanceOf(msg.sender) > 2, "Deposit: you must own at least 2 NFTs");
+    require(tokenIds.length + inventory[msg.sender].depositedNFTs.length >= 2, "Deposit: you must deposit at least 2 NFTs");
+    inventory[msg.sender].rewardAmount = calculateRewards(msg.sender);
+    inventory[msg.sender].lastClaimTime = block.timestamp; //set claim time
 
     for (uint256 index = 0; index < tokenIds.length; index++) {
-      require(ERC721(nftContract).ownerOf(tokenIds[index]) == msg.sender, "Deposit: You are not the owner of this token ID.");
-      addDeposit(msg.sender, tokenIds[index]);
-      ERC721(nftContract).safeTransferFrom(msg.sender, address(this), tokenIds[index]);
+      require(IStickmanERC721(nftContract).ownerOf(tokenIds[index]) == msg.sender, "Deposit: You are not the owner of this token ID.");
+      inventory[msg.sender].depositedNFTs.push(tokenIds[index]);
+      IStickmanERC721(nftContract).safeTransferFrom(msg.sender, address(this), tokenIds[index]);
     }
   }
 
-  function withdraw(uint256[] tokenIds) public reentrancyGuard {
+  //TODO: ensure the tokens being submitted are owned by the correct person
+  function withdraw(uint256[] calldata tokenIds) public reentrancyGuard {
     require(!locked, "Withdraw: All withdrawls are currently locked.");
-    require(!inventory[tokenID].locked, "Withdraw: Withdraw is locked for this token ID.");
-    require(inventory[tokenID].owner == msg.sender, "Withdraw: You are not the owner for this token ID.");
+    require(!inventory[msg.sender].locked, "Withdraw: Withdraw is locked for this token ID.");
     require(IERC20(feeCoin).balanceOf(msg.sender) >= withdrawlFee, "Withdrawl Fee: You don't have enough for the fee.");
-    IERC20(feeCoin).safeTransferFrom(msg.sender, address(this), withdrawlFee); //TODO: change staking cost to something
-    ERC721(nftContract).safeTransferFrom(address(this), msg.sender, tokenID);
-    deleteDeposit(msg.sender, tokenID);
+    require(inventory[msg.sender].depositedNFTs.length-tokenIds.length != 1, "Withdrawl: must keep at least two NFTs staked.");
+    if(inventory[msg.sender].initialDepositDate + 30 days < block.timestamp){
+      IERC20(feeCoin).safeTransferFrom(msg.sender, address(this), withdrawlFee);
+    }
+    for (uint256 index = 0; index < tokenIds.length; index++) {
+      IStickmanERC721(nftContract).safeTransferFrom(address(this), msg.sender, tokenIds[index]);
+      deleteDeposit(tokenIds[index], msg.sender);
+    }
   }
   
-  //TODO: figure out how claiming works, they will have to be staked at a certain time and each day it will check if they were staked?
-  // with multiple it makes it tricky because you cant just check how many they have staked, because there could be overlap somehow?
-  //need to find a protocol/contract that streams tokens
   function claim() public reentrancyGuard {
     require(!locked, "Claim: All claims are currently locked.");
-    // require(!inventory[tokenID].locked, "Claim: Claim is locked for this token ID.");
-    // require(inventory[tokenID].owner == msg.sender, "Claim: In order to claim you must be the owner.");
-    deposits[msg.sender].length;
-
-    if (block.timestamp >= inventory[tokenID].nextTimestamp) {
-      claimBalance(tokenID);
-    }
+    claimBalance(msg.sender);
   }
 
   function balanceOf(address _address) public view returns (uint) {
-    return deposits[_address].length;
+    return inventory[_address].depositedNFTs.length;
   }
 
   // Policy Functions
@@ -361,131 +343,106 @@ contract StickmanSagaNFTDepository is Ownable, IERC721Receiver {
     claimReward = newClaimReward;
   }
 
-  function managerSafeNFTWithdrawal(uint256 tokenID, address recipient) public onlyManager() {
-    deleteDeposit(inventory[tokenID].owner, tokenID);
-    ERC721(nftContract).safeTransferFrom(address(this), recipient, tokenID);
+  function managerSafeNFTWithdrawal(uint256[] calldata tokenIDs, address recipient) public onlyManager() {
+    for (uint256 index = 0; index < tokenIDs.length; index++) {
+          deleteDeposit(tokenIDs[index], recipient);
+          IStickmanERC721(nftContract).safeTransferFrom(address(this), recipient, tokenIDs[index]);
+    }
   }
 
   function managerBypassNFTWithdrawal(uint256 tokenID) public onlyManager() {
-    ERC721(nftContract).safeTransferFrom(address(this), msg.sender, tokenID); // Forcefully withdraw NFT and bypass deleteDeposit() in emergency or incase of accidental transfer
+    IStickmanERC721(nftContract).safeTransferFrom(address(this), msg.sender, tokenID); // Forcefully withdraw NFT and bypass deleteDeposit() in emergency or incase of accidental transfer
   }
 
   function managerTokenWithdrawal(address tokenAddress, address recipient) public onlyManager() {
     IERC20(tokenAddress).safeTransferFrom(address(this), recipient, IERC20(tokenAddress).balanceOf(address(this)));
   }
 
-  function toggleNFTLock(uint256 tokenID) public onlyManager() {
-    require(inventory[tokenID].owner == address(0x0), "toggleNFTLock: Token ID does not exist.");
-    inventory[tokenID].locked = !inventory[tokenID].locked;
+  function toggleNFTLock(address user) public onlyManager() {
+    require(user == address(0x0), "toggleNFTLock: Token ID does not exist.");
+    inventory[user].locked = !inventory[user].locked;
   }
 
   function toggleLock() public onlyManager() {
     locked = !locked;
   }
 
-  enum CONTRACTS { nftContract, feeCoin, treasury }
+  enum CONTRACTS { nftContract, feeCoin, stixToken }
   function setContract(CONTRACTS _contracts, address _address) public onlyManager() {
     if (_contracts == CONTRACTS.nftContract) { // 0
       nftContract = _address;
     } else if (_contracts == CONTRACTS.feeCoin) { // 1
       feeCoin = _address;
-    }else if (_contracts == CONTRACTS.treasury) { // 2
-      treasury = _address;
+    }else if (_contracts == CONTRACTS.stixToken) { // 2
+      stixToken = _address;
     } 
-    // else if (_contracts == CONTRACTS.initialfeecoin) { // 3
-    //   initialFeeCoin = _address;
-    // }
   }
 
   // Internal Functions
-  function addDeposit(address _recipient, uint256 _tokenID) internal {
-    require(inventory[_tokenID].owner == address(0x0), "addDeposit: Token ID already exists.");
-    inventory[_tokenID].owner = _recipient;
-    inventory[_tokenID].claimLength = claimLength;
-    inventory[_tokenID].locked = false;
-
-    deposits[_recipient].push(_tokenID);
-  }
-
-  function deleteDeposit(address _recipient, uint256 _tokenID) internal {
-    delete inventory[_tokenID];
-
-    uint256[] memory list = new uint256[](deposits[_recipient].length-1);
-    uint z=0;
-    for (uint i=0; i < deposits[_recipient].length; i++) {
-      if (deposits[_recipient][i] != _tokenID) {
-        list[z] = deposits[_recipient][i];
-        z++;
-      }
+  function getMultiplier(uint numStakedNFTs) internal view returns(uint){
+    uint8 decimals = IERC20(stixToken).decimals();
+    if (numStakedNFTs == 2) {
+      return 10*10^decimals;
+    } 
+    else if (numStakedNFTs == 3){
+      return 11*10^decimals;
     }
-    deposits[_recipient] = list;
+    else if (numStakedNFTs == 4){
+      return 12*10^decimals;
+    }
+    else if (numStakedNFTs == 5){
+      return 13*10^decimals;
+    }
+    else {
+      return 0;
+    }
   }
 
-  function claimBalance(uint256 _tokenID) internal {
-      uint256 toMint = 0;
-     
-      for (uint256 i=inventory[_tokenID].nextTimestamp; i < block.timestamp; ) {
-        if ( inventory[_tokenID].epochs >= inventory[_tokenID].maxEpochs ) {
-          break; // Stop adding rewards if maxEpochs is reached
+  function deleteDeposit(uint256 tokenId, address _recipient) internal {
+    uint256[] memory list = new uint256[](inventory[_recipient].depositedNFTs.length-1);
+      uint z=0;
+      for (uint i=0; i < inventory[_recipient].depositedNFTs.length; i++) {
+        if (inventory[_recipient].depositedNFTs[i] != tokenId) {
+          list[z] = inventory[_recipient].depositedNFTs[i];
+          z++;
         }
-
-        i += inventory[_tokenID].claimLength;
-        inventory[_tokenID].nextTimestamp = i;
-        inventory[_tokenID].epochs++;
-        toMint += getRewardAmount(_tokenID);
       }
+      inventory[_recipient].depositedNFTs = list;
+  }
 
-      uint256 fee = toMint.mul( inventory[_tokenID].claimFee ).div( 1000 );
-
-      inventory[_tokenID].claimLength = claimLength;
-      inventory[_tokenID].claimFee += claimFeeIncrement;
-
-      if ( inventory[_tokenID].claimFee >= maxClaimFee ) {
-        inventory[_tokenID].claimFee = maxClaimFee;
-      }
-
-      ITreasury(treasury).mintRewards(
-        inventory[_tokenID].owner, 
-        toMint.sub(fee)
+  function claimBalance(address _recipient) internal {
+      IERC20(stixToken).transfer(
+        _recipient, 
+        calculateRewards(_recipient)
       );
+      inventory[_recipient].lastClaimTime = block.timestamp - ((block.timestamp-inventory[_recipient].lastClaimTime) % claimLength);
+  }
+
+  function calculateRewards(address _recipient) internal view returns (uint256){
+      uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward);
+     
+      for (uint256 i=inventory[_recipient].lastClaimTime; i < block.timestamp; ) {
+        i += claimLength;
+        rewards += claimReward;
+      }
+
+      return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).add(inventory[_recipient].rewardAmount);
   }
 
   // Visual Functions
-  // function isFeePaid(uint256 tokenID) public view returns (bool) {
-  //   return block.timestamp <= inventory[tokenID].feeExpiration;
-  // }
-
-  function listAll(address _address) public view returns (uint256[] memory) {
-    uint256[] memory list = new uint256[](deposits[_address].length);
-    for (uint i=0; i < deposits[_address].length; i++) {
-      list[i] = deposits[_address][i];
-    }
-    return list;
+  function claimableAmount(address _recipient) public view returns (uint256) {
+    return calculateRewards(_recipient);
   }
-  
 
-  function claimableAmount(uint256 tokenID) public view returns (uint256) {
-    uint256 toMint = 0;
-    for (uint256 i=inventory[tokenID].nextTimestamp; i < block.timestamp; ) {
-      i += inventory[tokenID].claimLength;
-      toMint += getRewardAmount(tokenID);
+  function getTokenIdsForAddress(address nftOwner) public view returns(uint8[] memory){
+    uint8[] memory tokenIds = new uint8[](IStickmanERC721(nftContract).balanceOf(nftOwner));
+    uint z=0;
+    for (uint8 index = 1; index <= IStickmanERC721(nftContract).totalSupply(); index++) {
+      if(IStickmanERC721(nftContract).ownerOf(index)==nftOwner){
+        tokenIds[z]= index;
+        z++;
+      }
     }
-    return toMint;
+    return tokenIds;
   }
-  
-  // function getTokenType(uint256 tokenID) public view returns (uint) {
-  //   return DOMERC721(nftContract).TokenTypes(tokenID);
-  // }
-
-  // function getRewardAmount(uint256 tokenID) public view returns (uint256) {
-  //   uint256 _rewardAmount;
-  //   (, , _rewardAmount, , , ) = DOMERC721(nftContract).NFTTypes(getTokenType(tokenID));
-  //   return _rewardAmount;
-  // }
-
-  // function getStakingCost(uint256 tokenID) public view returns (uint256) {
-  //   uint256 _stakingCost; 
-  //   (, , , _stakingCost, , ) = DOMERC721(nftContract).NFTTypes(getTokenType(tokenID));
-  //   return _stakingCost;
-  // }
 }
