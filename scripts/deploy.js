@@ -25,12 +25,6 @@ async function main() {
   console.log("StickmanERC721 Contract address: ",this.stickmanERC721.address)
   this.stickmanERC721.enableMint();
 
-  this.StableCoin = await ethers.getContractFactory("StableCoin");
-  this.stableCoin= await this.StableCoin.deploy()
-  await this.stableCoin.deployed()
-  console.log("StableCoin Contract address: ",this.stableCoin.address)
-
-
   this.StickmanSagaNFTStaking = await ethers.getContractFactory("StickmanSagaNFTStaking");
   this.stickmanSagaNFTStaking= await this.StickmanSagaNFTStaking.deploy(this.stickmanERC721.address, this.stableCoin.address, this.stix.address)
   await this.stickmanSagaNFTStaking.deployed()
