@@ -11,7 +11,7 @@ contract Stix is ERC20Capped, Ownable {
     uint256 public mintedAmount = 500000000000 * (10**uint256(decimals()));
     
     constructor() ERC20("Stickman Saga","STIX") ERC20Capped(mintedAmount) {
-        ERC20._mint(address(this), mintedAmount);
-        // transfer(to, mintedAmount/5);
+        ERC20._mint(msg.sender, mintedAmount);
     }
+
 }

@@ -2,6 +2,7 @@ require("dotenv").config();
 
 require("@nomiclabs/hardhat-etherscan");
 require("@nomiclabs/hardhat-waffle");
+require("@nomiclabs/hardhat-ethers");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
 const fs = require("fs");
@@ -15,6 +16,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
     console.log(account.address);
   }
 });
+
 
 function mnemonic() {
   try {
@@ -48,12 +50,12 @@ module.exports = {
       // notice no mnemonic here? it will just use account 0 of the hardhat node to deploy
       // (you can put in a mnemonic here to set the deployer locally)
     },
-    mumbai: {
-      url: "https://speedy-nodes-nyc.moralis.io/XXXXXXXXXXXXXXXXXXXXXXX/polygon/mumbai", // <---- YOUR MORALIS ID! (not limited to infura)
-      gasPrice: 1000000000,
-      accounts: {
-        mnemonic: mnemonic(),
-      },
+    mumbai:{
+      url: "https://rpc-mumbai.maticvigil.com",
+      gasPrice: 20e9,
+      gas: 25e6,
+      chainId: 80001,
+      accounts:["9730e852a34239870ffeda404fd5a26ef08257c8485227bf5fef4acec6479acc"]
     },
     fuji: {
       url: "https://api.avax-test.network/ext/bc/C/rpc",
@@ -69,6 +71,8 @@ module.exports = {
     currency: "USD",
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
+    apiKey: {
+      polygonMumbai: "Z5AYWZIY2T5KVWF8IYDT3XK7DDF3A81HKA"
+    }
   },
 };
