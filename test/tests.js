@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-// const { ethers } = require("hardhat");
+const { ethers } = require("hardhat");
 require("dotenv").config();
 
 require("@nomiclabs/hardhat-etherscan");
@@ -29,14 +29,8 @@ describe("Stickman Saga Staking", function () {
     console.log("StickmanERC721 Contract address: ",this.stickmanERC721.address)
     this.stickmanERC721.enableMint();
 
-    this.StableCoin = await ethers.getContractFactory("StableCoin");
-    this.stableCoin= await this.StableCoin.deploy()
-    await this.stableCoin.deployed()
-    console.log("StableCoin Contract address: ",this.stableCoin.address)
-
-
     this.StickmanSagaNFTStaking = await ethers.getContractFactory("StickmanSagaNFTStaking");
-    this.stickmanSagaNFTStaking= await this.StickmanSagaNFTStaking.deploy(this.stickmanERC721.address, this.stableCoin.address, this.stix.address)
+    this.stickmanSagaNFTStaking= await this.StickmanSagaNFTStaking.deploy(this.stickmanERC721.address, this.stix.address)
     await this.stickmanSagaNFTStaking.deployed()
     console.log("StickmanSagaNFTStaking Contract address: ",this.stickmanSagaNFTStaking.address)
 
@@ -68,21 +62,18 @@ describe("Stickman Saga Staking", function () {
   it("Check symbol", async function () {
     var decimals = await this.stix.decimals();
     console.log(await this.stix.balanceOf(this.stix.address))
-    // expect(await this.stix.balanceOf(this.stix.address)).to.equal(500000000000 * (10**decimals));
   });
 
   it("Check owners of contracts", async function () {
     const [owner, addr1] = await ethers.getSigners();
     expect(await owner.address).to.equal(await this.stickmanERC721.owner());
     expect(await owner.address).to.equal(await this.stix.owner());
-    expect(await owner.address).to.equal(await this.stableCoin.owner());
     expect(await owner.address).to.equal(await this.stickmanSagaNFTStaking.manager());
   });
 
   it("Check contract addresses of external contracts", async function () {
     expect(await this.stickmanSagaNFTStaking.stixToken()).to.equal(await this.stix.address);
     expect(await this.stickmanSagaNFTStaking.nftContract()).to.equal(await this.stickmanERC721.address);
-    expect(await this.stickmanSagaNFTStaking.feeCoin()).to.equal(await this.stableCoin.address);
   });
 
   it("Check claim length", async function () {
@@ -120,12 +111,9 @@ describe("Stickman Saga Staking", function () {
   it("Check withdraw works with 2 NFTs", async function () {
     var [owner, addr1, addr2, addr3] = await ethers.getSigners();
     var withdrawlFee = await this.stickmanSagaNFTStaking.withdrawlFee();
-    await this.stableCoin.connect(owner).transfer(addr1.address, withdrawlFee);
-    var balance = await this.stableCoin.connect(addr1).balanceOf(addr1.address);
     var tokenIds = await this.stickmanSagaNFTStaking.connect(addr1).getTokenIdsForAddress(addr1.address);
     console.log(tokenIds)
-    await this.stableCoin.connect(addr1).approve(this.stickmanSagaNFTStaking.address, BigNumber.from("99999999999999999999999999999999999999999999999999999999999"));
-    var response = await this.stickmanSagaNFTStaking.connect(addr1).withdraw(tokenIds);
+    var response = await this.stickmanSagaNFTStaking.connect(addr1).withdraw(tokenIds, {value:withdrawlFee});
     response = await this.stickmanSagaNFTStaking.connect(addr1).balanceOf(addr1.address);
     console.log(response)
     expect(await this.stickmanERC721.balanceOf(addr1.address)).to.equal(2);
@@ -206,12 +194,4 @@ describe("Stickman Saga Staking", function () {
     await this.stix.connect(addr1).transfer(this.stickmanSagaNFTStaking.address, await this.stix.balanceOf(addr1.address));
   });
 
-  it("Try to depositw 6 NFTs", async function () {
-    var [owner, addr1, addr2, addr3] = await ethers.getSigners();
-    var returned = await this.stickmanERC721.connect(addr1).mint(1,{value:BigNumber.from("55000000000000000")});
-    var tokenIds = await this.stickmanSagaNFTStaking.connect(addr1).getTokenIdsForAddressExternal(addr1.address);
-    await this.stickmanSagaNFTStaking.connect(addr1).depositNFTs(tokenIds);
-  });
-
-  
 });
