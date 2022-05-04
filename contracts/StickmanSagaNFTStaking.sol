@@ -445,16 +445,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
 
   function calculateRewards(address _recipient) internal view returns (uint256){
       uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
-      // return rewards;
       return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10).add(inventory[_recipient].rewardAmount);
-  }
-
-  function calculateRewards2(address _recipient) public view returns (uint256){
-      uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
-      // uint mult = getMultiplier(inventory[_recipient].depositedNFTs.length);
-      // return mult;
-      return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10).add(inventory[_recipient].rewardAmount);
-      // return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)/10).add(inventory[_recipient].rewardAmount);
   }
 
 
