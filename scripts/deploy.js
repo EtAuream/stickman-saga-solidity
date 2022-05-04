@@ -14,19 +14,19 @@ async function main() {
   // await hre.run('compile');
 
   // We get the contract to deploy
-  this.Stix = await ethers.getContractFactory("Stix");
-  this.stix= await this.Stix.deploy()
-  await this.stix.deployed()
-  console.log("Stix Contract address: ",this.stix.address)
+  // this.Stix = await ethers.getContractFactory("Stix");
+  // this.stix= await this.Stix.deploy()
+  // await this.stix.deployed()
+  // console.log("Stix Contract address: ",this.stix.address)
 
-  this.StickmanERC721 = await ethers.getContractFactory("StickmanERC721");
-  this.stickmanERC721= await this.StickmanERC721.deploy("StickmanTest","STIXNFT")
-  await this.stickmanERC721.deployed()
-  console.log("StickmanERC721 Contract address: ",this.stickmanERC721.address)
-  this.stickmanERC721.enableMint();
+  // this.StickmanERC721 = await ethers.getContractFactory("StickmanERC721");
+  // this.stickmanERC721= await this.StickmanERC721.deploy("StickmanTest","STIXNFT")
+  // await this.stickmanERC721.deployed()
+  // console.log("StickmanERC721 Contract address: ",this.stickmanERC721.address)
+  // this.stickmanERC721.enableMint();
 
   this.StickmanSagaNFTStaking = await ethers.getContractFactory("StickmanSagaNFTStaking");
-  this.stickmanSagaNFTStaking= await this.StickmanSagaNFTStaking.deploy(this.stickmanERC721.address, this.stableCoin.address, this.stix.address)
+  this.stickmanSagaNFTStaking= await this.StickmanSagaNFTStaking.deploy("0xd3Cd1287e6A7069a183a387C917ABDA4bbE3a361", "0x1495f971931CAB5D9F24E077C4Bfc916a290729f")
   await this.stickmanSagaNFTStaking.deployed()
   console.log("StickmanSagaNFTStaking Contract address: ",this.stickmanSagaNFTStaking.address)
 }

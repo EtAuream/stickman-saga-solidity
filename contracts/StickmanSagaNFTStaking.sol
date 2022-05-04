@@ -245,9 +245,10 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   bool public locked; // Locks all deposits, claims, and withdrawls
   uint256 public withdrawlFee; //fee in USDC for withdrawing staked NFT
   uint256 public claimLength; // Length of time between claims
-  uint256 public claimReward = 20; // Reward per Stickman staked
+  uint256 public claimReward = 20*(10**18); // Reward per Stickman staked
  
   mapping(address => vestedInfo) public inventory; // Each token ID mapped to the info about each one
+  mapping(uint8 => uint256) public stakingTimestamps;
 
   struct vestedInfo {
     uint256 lastClaimTime; // Current length of time between claims
@@ -285,6 +286,17 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     _;
   }
 
+    modifier checkFees(uint8[] calldata tokenIds){
+      uint256 totalFee=0;
+      for (uint256 index = 0; index < tokenIds.length; index++) {
+        if(stakingTimestamps[tokenIds[index]] + 30 days >  block.timestamp){
+          totalFee += withdrawlFee;
+        }
+      }
+      require(msg.value >= totalFee, "Must send the correct fee amount.");
+    _;
+  }
+
   constructor(
     address _nftContract, // Stickman Saga NFT contract
     address _stixToken // STIX token contract
@@ -292,7 +304,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     nftContract = _nftContract;
     claimLength = 1 days;
     stixToken = _stixToken;
-    withdrawlFee = 20 * 10**18;
+    withdrawlFee = .005 * 10**18;
   }
 
   function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
@@ -309,13 +321,13 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
       require(IStickmanERC721(nftContract).ownerOf(tokenIds[index]) == msg.sender, "Deposit: You are not the owner of this token ID.");
       inventory[msg.sender].depositedNFTs.push(tokenIds[index]);
       IStickmanERC721(nftContract).safeTransferFrom(msg.sender, address(this), tokenIds[index]);
+      stakingTimestamps[tokenIds[index]] = block.timestamp;
     }
   }
 
-  function withdraw(uint8[] calldata tokenIds) public payable reentrancyGuard {
+  function withdraw(uint8[] calldata tokenIds) public payable reentrancyGuard checkFees(tokenIds) {
     require(!locked, "Withdraw: All withdrawls are currently locked.");
     require(!inventory[msg.sender].locked, "Withdraw: Withdraw is locked for this token ID.");
-    require(msg.value >= withdrawlFee, "Withdrawl Fee: You don't have enough for the fee.");
     require(inventory[msg.sender].depositedNFTs.length-tokenIds.length != 1, "Withdrawl: must keep at least two NFTs staked.");
     for (uint256 index = 0; index < tokenIds.length; index++) {
       transferNFTs(tokenIds[index], msg.sender);
@@ -325,6 +337,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   function claim() public reentrancyGuard {
     require(!locked, "Claim: All claims are currently locked.");
     claimBalance(msg.sender);
+    inventory[msg.sender].lastClaimTime = block.timestamp; //set claim time
   }
 
   function balanceOf(address _address) public view returns (uint) {
@@ -348,10 +361,6 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   function setClaimReward(uint256 newClaimReward) public onlyManager(){
     claimReward = newClaimReward;
   }
-
-  // function setFeeCoin(address feeCoinAddress) public onlyManager(){
-  //   feeCoin = feeCoinAddress;
-  // }
 
   function managerSafeNFTWithdrawal(uint256[] calldata tokenIDs, address recipient) public onlyManager() {
     for (uint256 index = 0; index < tokenIDs.length; index++) {
@@ -391,19 +400,18 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   }
 
   // Internal Functions
-  function getMultiplier(uint numStakedNFTs) internal view returns(uint){
-    uint8 decimals = IERC20(stixToken).decimals()-1;
+  function getMultiplier(uint numStakedNFTs) internal pure returns(uint){
     if (numStakedNFTs == 2) {
-      return 10*10**decimals;
+      return 10;
     } 
     else if (numStakedNFTs == 3){
-      return 11*10**decimals;
+      return 11;
     }
     else if (numStakedNFTs == 4){
-      return 12*10**decimals;
+      return 12;
     }
     else if (numStakedNFTs == 5){
-      return 13*10**decimals;
+      return 13;
     }
     else {
       return 0;
@@ -436,14 +444,43 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   }
 
   function calculateRewards(address _recipient) internal view returns (uint256){
-      uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward);
-
-      return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).add(inventory[_recipient].rewardAmount);
+      uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
+      // return rewards;
+      return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10).add(inventory[_recipient].rewardAmount);
   }
+
+  function calculateRewards2(address _recipient) public view returns (uint256){
+      uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
+      // uint mult = getMultiplier(inventory[_recipient].depositedNFTs.length);
+      // return mult;
+      return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10).add(inventory[_recipient].rewardAmount);
+      // return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)/10).add(inventory[_recipient].rewardAmount);
+  }
+
 
   // Visual Functions
   function getClaimableAmount(address _recipient) public view returns (uint256) {
     return calculateRewards(_recipient);
+  }
+
+  function getWithdrawlFee(address _recipient) public view returns (uint256) {
+    uint256 totalFee=0;
+    for (uint256 index = 0; index < inventory[_recipient].depositedNFTs.length; index++) {
+      if(stakingTimestamps[inventory[_recipient].depositedNFTs[index]] + 30 days >  block.timestamp){
+        totalFee += withdrawlFee;
+      }
+    }
+    return totalFee;
+  }
+
+  function getWithdrawlFeesForTokens(uint8[] calldata tokenIds) public view returns (uint256){
+    uint256 totalFee=0;
+    for (uint256 index = 0; index < tokenIds.length; index++) {
+      if(stakingTimestamps[tokenIds[index]] + 30 days >  block.timestamp){
+        totalFee += withdrawlFee;
+      }
+    }
+    return totalFee;
   }
 
   function getTokenIdsForAddressExternal(address nftOwner) public view returns(uint8[] memory){

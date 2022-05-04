@@ -105,17 +105,14 @@ describe("Stickman Saga Staking", function () {
     expect(response).to.equal(2);
     expect(await this.stickmanERC721.balanceOf(this.stickmanSagaNFTStaking.address)).to.equal(2);
     var invent = await this.stickmanSagaNFTStaking.getTokenIdsForAddress(addr1.address);
-    console.log(invent)
   });
 
   it("Check withdraw works with 2 NFTs", async function () {
     var [owner, addr1, addr2, addr3] = await ethers.getSigners();
-    var withdrawlFee = await this.stickmanSagaNFTStaking.withdrawlFee();
+    var withdrawlFee = await this.stickmanSagaNFTStaking.getWithdrawlFee(addr1.address);
     var tokenIds = await this.stickmanSagaNFTStaking.connect(addr1).getTokenIdsForAddress(addr1.address);
-    console.log(tokenIds)
     var response = await this.stickmanSagaNFTStaking.connect(addr1).withdraw(tokenIds, {value:withdrawlFee});
     response = await this.stickmanSagaNFTStaking.connect(addr1).balanceOf(addr1.address);
-    console.log(response)
     expect(await this.stickmanERC721.balanceOf(addr1.address)).to.equal(2);
   });
 
@@ -127,18 +124,18 @@ describe("Stickman Saga Staking", function () {
     expect(response).to.equal(2);
     expect(await this.stickmanERC721.balanceOf(this.stickmanSagaNFTStaking.address)).to.equal(2);
     var invent = await this.stickmanSagaNFTStaking.getTokenIdsForAddress(addr1.address);
-    console.log(invent)
   });
 
   it("Check claim with 2 NFTs", async function () {
     var [owner, addr1, addr2, addr3] = await ethers.getSigners();
     await network.provider.send("evm_increaseTime", [sevenDays])
     await ethers.provider.send('evm_mine');
+    var rewards = await this.stickmanSagaNFTStaking.connect(addr1).calculateRewards2(addr1.address);
     var balance = await this.stix.balanceOf(addr1.address);
     expect(balance).to.equal(0);
     await this.stickmanSagaNFTStaking.connect(addr1).claim();
     var newBalance = await this.stix.balanceOf(addr1.address);
-    expect(newBalance).to.equal(ethers.utils.parseEther("140"));
+    expect(newBalance).to.equal(ethers.utils.parseEther("280",18));
   });
 
   it("Check claim with 3 NFTs", async function () {
@@ -150,10 +147,11 @@ describe("Stickman Saga Staking", function () {
     expect(response).to.equal(3);
     await network.provider.send("evm_increaseTime", [sevenDays])
     await ethers.provider.send('evm_mine');
+    var rewards2 = await this.stickmanSagaNFTStaking.connect(addr1).calculateRewards2(addr1.address);
     await this.stickmanSagaNFTStaking.connect(addr1).claim();
     var newBalance = await this.stix.balanceOf(addr1.address);
-    var rewards = 20*1.1*7+140
-    expect(newBalance).to.equal(ethers.utils.parseEther(String(rewards)));
+    var rewards = 20*1.1*7*3+280
+    expect(newBalance).to.equal(ethers.utils.parseEther(String(rewards),18));
     await this.stix.connect(addr1).transfer(this.stickmanSagaNFTStaking.address, await this.stix.balanceOf(addr1.address));
 
   });
@@ -171,7 +169,7 @@ describe("Stickman Saga Staking", function () {
     expect(balance).to.equal(0);
     await this.stickmanSagaNFTStaking.connect(addr1).claim();
     var newBalance = await this.stix.balanceOf(addr1.address);
-    var rewards = 20*1.2*7
+    var rewards = 20*1.2*4*7
     expect(newBalance).to.equal(ethers.utils.parseEther(String(rewards)));
     await this.stix.connect(addr1).transfer(this.stickmanSagaNFTStaking.address, await this.stix.balanceOf(addr1.address));
   });
@@ -189,7 +187,7 @@ describe("Stickman Saga Staking", function () {
     expect(balance).to.equal(0);
     await this.stickmanSagaNFTStaking.connect(addr1).claim();
     var newBalance = await this.stix.balanceOf(addr1.address);
-    var rewards = 20*1.3*7
+    var rewards = 20*1.3*7*5
     expect(newBalance).to.equal(ethers.utils.parseEther(String(rewards)));
     await this.stix.connect(addr1).transfer(this.stickmanSagaNFTStaking.address, await this.stix.balanceOf(addr1.address));
   });
