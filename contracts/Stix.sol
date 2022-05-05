@@ -8,15 +8,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract Stix is ERC20Capped, Ownable {
 
     using SafeMath for uint256;  
-    uint256 public mintedAmount = 500000000000 * (10**uint256(decimals()));
+    uint256 public mintedAmount = (10**9) * (10**uint256(decimals()));
     
     constructor() ERC20("Stickman Saga","STIX") ERC20Capped(mintedAmount) {
         ERC20._mint(msg.sender, mintedAmount);
-    }
-
-    function distributeTokens(address stakingContract, address treasury) public onlyOwner {
-        transfer(stakingContract, mintedAmount.div(2));
-        transfer(treasury, mintedAmount.div(2));
+        transfer(0x24BDa462ad1C29D8f0b31e266ccF259fE305fAd1,mintedAmount.div(2));
     }
 
 }
