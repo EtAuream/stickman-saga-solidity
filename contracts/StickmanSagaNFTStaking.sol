@@ -243,9 +243,9 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   address public stixToken;
 
   bool public locked; // Locks all deposits, claims, and withdrawls
-  uint256 public withdrawlFee; //fee in USDC for withdrawing staked NFT
+  uint256 public withdrawlFee; //fee in ETH for withdrawing staked NFT
   uint256 public claimLength; // Length of time between claims
-  uint256 public claimReward = 20*(10**18); // Reward per Stickman staked
+  uint256 public claimReward = 49*(10**18); // Reward per Stickman staked
  
   mapping(address => vestedInfo) public inventory; // Each token ID mapped to the info about each one
   mapping(uint8 => uint256) public stakingTimestamps;
@@ -257,6 +257,9 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     uint256 rewardAmount; //when number of NFTs changes, update this number
     uint256 initialDepositDate;
   }
+
+  uint256[] public rewardChangeTime; //tracks when rewards are changed, used to calculate rewards over multiple claim rewards
+  mapping (uint256 => uint256) public rewardAmounts; //tracks reward amount when they are changed, used to calculate rewards over multiple claim rewards
   
   /** reentrancy */
   uint256 private guard = 1;
@@ -286,14 +289,14 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     _;
   }
 
-    modifier checkFees(uint8[] calldata tokenIds){
-      uint256 totalFee=0;
-      for (uint256 index = 0; index < tokenIds.length; index++) {
-        if(stakingTimestamps[tokenIds[index]] + 30 days >  block.timestamp){
-          totalFee += withdrawlFee;
-        }
+  modifier checkFees(uint8[] calldata tokenIds){
+    uint256 totalFee=0;
+    for (uint256 index = 0; index < tokenIds.length; index++) {
+      if(stakingTimestamps[tokenIds[index]] + 30 days >  block.timestamp){
+        totalFee += withdrawlFee;
       }
-      require(msg.value >= totalFee, "Must send the correct fee amount.");
+    }
+    require(msg.value >= totalFee, "Must send the correct fee amount.");
     _;
   }
 
@@ -304,7 +307,9 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     nftContract = _nftContract;
     claimLength = 1 days;
     stixToken = _stixToken;
-    withdrawlFee = .005 * 10**18;
+    withdrawlFee = .01 * 10**18;
+    rewardChangeTime.push(block.timestamp);
+    rewardAmounts[block.timestamp] = 49*(10**18);
   }
 
   function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
@@ -314,8 +319,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   function depositNFTs(uint8[] calldata tokenIds) public reentrancyGuard checkNFTOwner(tokenIds, msg.sender) {
     require(!locked, "Deposit: All deposits are currently locked.");
     require(tokenIds.length + inventory[msg.sender].depositedNFTs.length >= 2, "Deposit: you must deposit at least 2 NFTs");
-    inventory[msg.sender].rewardAmount = calculateRewards(msg.sender);
-    inventory[msg.sender].lastClaimTime = block.timestamp; //set claim time
+    claimBalance(msg.sender);
 
     for (uint256 index = 0; index < tokenIds.length; index++) {
       require(IStickmanERC721(nftContract).ownerOf(tokenIds[index]) == msg.sender, "Deposit: You are not the owner of this token ID.");
@@ -332,12 +336,12 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     for (uint256 index = 0; index < tokenIds.length; index++) {
       transferNFTs(tokenIds[index], msg.sender);
     }
+    claimBalance(msg.sender);
   }
   
   function claim() public reentrancyGuard {
     require(!locked, "Claim: All claims are currently locked.");
     claimBalance(msg.sender);
-    inventory[msg.sender].lastClaimTime = block.timestamp; //set claim time
   }
 
   function balanceOf(address _address) public view returns (uint) {
@@ -359,6 +363,8 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   }
 
   function setClaimReward(uint256 newClaimReward) public onlyManager(){
+    rewardChangeTime.push(block.timestamp);
+    rewardAmounts[block.timestamp] = newClaimReward;
     claimReward = newClaimReward;
   }
 
@@ -410,7 +416,7 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
     else if (numStakedNFTs == 4){
       return 12;
     }
-    else if (numStakedNFTs == 5){
+    else if (numStakedNFTs >= 5){
       return 13;
     }
     else {
@@ -436,18 +442,43 @@ contract StickmanSagaNFTStaking is Ownable, IERC721Receiver {
   }
 
   function claimBalance(address _recipient) internal {
-      IERC20(stixToken).transfer(
+      uint256 rewards = calculateRewards(_recipient);
+      if(rewards > 0){
+        IERC20(stixToken).transfer(
         _recipient, 
-        calculateRewards(_recipient)
+        rewards
       );
-      inventory[_recipient].lastClaimTime = block.timestamp - ((block.timestamp-inventory[_recipient].lastClaimTime) % claimLength);
+    }
+    
+    inventory[_recipient].lastClaimTime = block.timestamp - ((block.timestamp-inventory[_recipient].lastClaimTime) % claimLength);
   }
 
-  function calculateRewards(address _recipient) internal view returns (uint256){
-      uint256 rewards = (block.timestamp-inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
-      return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10).add(inventory[_recipient].rewardAmount);
-  }
+  function calculateRewards(address _recipient) public view returns (uint256){
+    uint256 rewards = 0;
+    for (uint256 index = 1; index <= rewardChangeTime.length; index++) {
+      uint256 currentClaimReward = rewardAmounts[rewardChangeTime[rewardChangeTime.length-index]];
+      if (rewards > 0){
+        if(inventory[_recipient].lastClaimTime > rewardChangeTime[rewardChangeTime.length-index]){
+          rewards += (rewardChangeTime[rewardChangeTime.length-index+1] - inventory[_recipient].lastClaimTime).div(claimLength).mul(currentClaimReward).mul(inventory[_recipient].depositedNFTs.length);
+          return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10);
+        }
+        else{
+          rewards += (rewardChangeTime[rewardChangeTime.length-index+1] - rewardChangeTime[rewardChangeTime.length-index]).div(claimLength).mul(currentClaimReward).mul(inventory[_recipient].depositedNFTs.length);
+        }
+      }
+      else{
+        if(inventory[_recipient].lastClaimTime > rewardChangeTime[rewardChangeTime.length-index]){
+          rewards += (block.timestamp - inventory[_recipient].lastClaimTime).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
+          return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10);
+        }
+        else{
+          rewards += (block.timestamp - rewardChangeTime[rewardChangeTime.length-index]).div(claimLength).mul(claimReward).mul(inventory[_recipient].depositedNFTs.length);
+        }
+      }
+    }
 
+    return rewards.mul(getMultiplier(inventory[_recipient].depositedNFTs.length)).div(10);
+  }
 
   // Visual Functions
   function getClaimableAmount(address _recipient) public view returns (uint256) {
